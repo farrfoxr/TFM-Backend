@@ -42,7 +42,7 @@ io.on("connection", (socket) => {
         id: socket.id,
         name: playerName,
         isHost: true,
-        isReady: true, // Host is automatically ready
+        isReady: false, // Changed from true to false - host is no longer automatically ready
         score: 0,
       }
 
