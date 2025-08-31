@@ -1,3 +1,5 @@
+// src/types/index.ts
+
 // Core data structures that match your frontend exactly
 export interface Player {
   id: string // Socket ID on backend
@@ -19,6 +21,13 @@ export interface GameSettings {
   difficulty: "easy" | "medium" | "hard"
   duration: number // in seconds
   questionCount: number
+  operations: {
+    addition: boolean
+    subtraction: boolean
+    multiplication: boolean
+    division: boolean
+    exponents: boolean
+  }
 }
 
 export interface GameState {

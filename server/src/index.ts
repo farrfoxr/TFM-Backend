@@ -32,6 +32,41 @@ app.get("/health", (req, res) => {
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`)
 
+  const handleLeaveLobby = (socketId: string) => {
+    let lobbyCodeToUpdate: string | null = null
+
+    for (const [code, lobby] of lobbies.entries()) {
+      const playerIndex = lobby.players.findIndex((p) => p.id === socketId)
+
+      if (playerIndex !== -1) {
+        // Remove the player from the lobby
+        lobby.players.splice(playerIndex, 1)
+        lobbyCodeToUpdate = code
+
+        // If the lobby is now empty, delete it
+        if (lobby.players.length === 0) {
+          lobbies.delete(code)
+          console.log(`[v0] Lobby ${code} is empty and has been deleted.`)
+          break
+        }
+
+        // If the leaving player was the host, assign a new host
+        if (lobby.host === socketId) {
+          const newHost = lobby.players[0]
+          if (newHost) {
+            newHost.isHost = true
+            lobby.host = newHost.id
+            console.log(`[v0] Host left lobby ${code}. New host is ${newHost.name}.`)
+          }
+        }
+
+        // Broadcast the update to the remaining players
+        io.to(code).emit("lobby-updated", lobby)
+        break
+      }
+    }
+  }
+
   socket.on("create-lobby", (playerName, callback) => {
     try {
       // Generate unique lobby code
@@ -63,8 +98,15 @@ io.on("connection", (socket) => {
         players: [hostPlayer],
         settings: {
           difficulty: "medium",
-          duration: 30,
+          duration: 120, // Changed from 30 to 120 seconds to match frontend default
           questionCount: 10,
+          operations: {
+            addition: true,
+            subtraction: true,
+            multiplication: true,
+            division: true,
+            exponents: false,
+          },
         },
         gameState: initialGameState,
         host: socket.id,
@@ -171,15 +213,58 @@ io.on("connection", (socket) => {
     }
   })
 
+  socket.on("leave-lobby", () => {
+    console.log(`[v0] Player ${socket.id} is leaving lobby`)
+    handleLeaveLobby(socket.id)
+  })
+
+  socket.on("update-settings", (newSettings) => {
+    try {
+      // Find which lobby the player belongs to
+      let playerLobby: Lobby | null = null
+      let lobbyCode: string | null = null
+
+      for (const [code, lobby] of lobbies.entries()) {
+        const player = lobby.players.find((p) => p.id === socket.id)
+        if (player) {
+          playerLobby = lobby
+          lobbyCode = code
+          break
+        }
+      }
+
+      // Handle error if player is not in any lobby
+      if (!playerLobby || !lobbyCode) {
+        console.log(`[v0] Player ${socket.id} tried to update settings but is not in any lobby`)
+        return
+      }
+
+      // Find the specific player and verify they are the host
+      const player = playerLobby.players.find((p) => p.id === socket.id)
+      if (!player || !player.isHost) {
+        console.log(`[v0] Player ${socket.id} tried to update settings but is not the host`)
+        return
+      }
+
+      // Merge new settings with existing settings using shallow merge
+      playerLobby.settings = { ...playerLobby.settings, ...newSettings }
+
+      console.log(`[v0] Host ${player.name} (${socket.id}) updated settings in lobby ${lobbyCode}:`, newSettings)
+
+      // Broadcast updated lobby to all players in the room
+      io.to(lobbyCode).emit("lobby-updated", playerLobby)
+    } catch (error) {
+      console.error(`[v0] Error updating settings:`, error)
+    }
+  })
+
   // TODO: Implement socket event handlers
-  // - leave-lobby
   // - start-game
   // - submit-answer
-  // - update-settings
 
   socket.on("disconnect", () => {
     console.log(`Player disconnected: ${socket.id}`)
-    // TODO: Handle player leaving lobby
+    handleLeaveLobby(socket.id)
   })
 })
 
