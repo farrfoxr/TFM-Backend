@@ -61,7 +61,7 @@ export interface ClientToServerEvents {
     callback: (response: { success: boolean; lobby?: Lobby; error?: string }) => void,
   ) => void
   "leave-lobby": () => void
-  "toggle-ready": () => void
+  "toggle-ready": (callback: (response: { success: boolean; isReady?: boolean; error?: string }) => void) => void
   "start-game": () => void
   "submit-answer": (answer: string) => void
   "update-settings": (settings: Partial<GameSettings>) => void

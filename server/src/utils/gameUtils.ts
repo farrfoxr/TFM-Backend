@@ -61,6 +61,11 @@ export class GameUtils {
   }
 
   static generateLobbyCode(): string {
-    return Math.random().toString(36).substring(2, 8).toUpperCase()
+    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    let code = ""
+    for (let i = 0; i < 4; i++) {
+      code += letters.charAt(Math.floor(Math.random() * letters.length))
+    }
+    return code
   }
 }
