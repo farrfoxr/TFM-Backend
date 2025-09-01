@@ -90,6 +90,7 @@ io.on("connection", (socket) => {
         comboCount: 0,
         isComboActive: false,
         comboTimeRemaining: 0,
+        isEnded: false, // Added isEnded: false to initial game state
       }
 
       // Create new lobby
@@ -258,8 +259,72 @@ io.on("connection", (socket) => {
     }
   })
 
+  socket.on("start-game", () => {
+    try {
+      let lobbyToUpdate: Lobby | undefined
+      let lobbyCodeToUpdate: string | undefined
+
+      // Find the lobby the player is in
+      for (const [code, lobby] of lobbies.entries()) {
+        if (lobby.players.some((p) => p.id === socket.id)) {
+          lobbyCodeToUpdate = code
+          lobbyToUpdate = lobby
+          break
+        }
+      }
+
+      if (!lobbyToUpdate || !lobbyCodeToUpdate) {
+        return console.log(`[v0] Player ${socket.id} tried to start game but is not in any lobby`)
+      }
+
+      // Validate that the player is the host and all players are ready
+      const playerIsHost = lobbyToUpdate.host === socket.id
+      const allPlayersReady = lobbyToUpdate.players.every((p) => p.isReady)
+
+      if (!playerIsHost) {
+        return console.log(`[v0] Player ${socket.id} tried to start game but is not the host`)
+      }
+      if (!allPlayersReady) {
+        return console.log(`[v0] Host tried to start game but not all players are ready`)
+      }
+
+      // --- Start of Immutable Update Logic ---
+
+      // 1. Generate questions
+      const questions = GameUtils.generateQuestions(lobbyToUpdate.settings)
+
+      // 2. Create the new game state
+      const newGameState: GameState = {
+        ...lobbyToUpdate.gameState,
+        isActive: true,
+        currentQuestionIndex: 0,
+        questions: questions,
+        timeRemaining: lobbyToUpdate.settings.duration,
+        isEnded: false,
+      }
+
+      // 3. Create the new, updated lobby object
+      const updatedLobby: Lobby = {
+        ...lobbyToUpdate,
+        gameState: newGameState,
+        isGameActive: true,
+      }
+
+      // 4. Save the new lobby state back to the Map
+      lobbies.set(lobbyCodeToUpdate, updatedLobby)
+
+      // --- End of Immutable Update Logic ---
+
+      console.log(`[v0] Host started game in lobby ${lobbyCodeToUpdate} with ${questions.length} questions`)
+
+      // Broadcast "game-started" event to all players in the lobby
+      io.to(lobbyCodeToUpdate).emit("game-started", updatedLobby.gameState)
+    } catch (error) {
+      console.error(`[v0] Error starting game:`, error)
+    }
+  })
+
   // TODO: Implement socket event handlers
-  // - start-game
   // - submit-answer
 
   socket.on("disconnect", () => {

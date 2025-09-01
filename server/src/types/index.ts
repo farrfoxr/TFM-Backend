@@ -38,6 +38,7 @@ export interface GameState {
   comboCount: number
   isComboActive: boolean
   comboTimeRemaining: number
+  isEnded: boolean
 }
 
 export interface Lobby {
