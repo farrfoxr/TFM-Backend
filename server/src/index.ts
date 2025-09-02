@@ -1,3 +1,5 @@
+// server\src\index.ts
+
 import express from "express"
 import { createServer } from "http"
 import { Server } from "socket.io"
@@ -45,6 +47,10 @@ io.on("connection", (socket) => {
 
         // If the lobby is now empty, delete it
         if (lobby.players.length === 0) {
+          if (lobby.gameTimerId) {
+            clearInterval(lobby.gameTimerId)
+            console.log(`[v0] Cleared timer for empty lobby ${code}`)
+          }
           lobbies.delete(code)
           console.log(`[v0] Lobby ${code} is empty and has been deleted.`)
           break
@@ -79,6 +85,8 @@ io.on("connection", (socket) => {
         isHost: true,
         isReady: false, // Changed from true to false - host is no longer automatically ready
         score: 0,
+        comboCount: 0, // Initialize combo count for new host
+        answeredQuestionIds: [], // Initialize answered questions array for new host
       }
 
       // Create initial game state
@@ -148,6 +156,8 @@ io.on("connection", (socket) => {
         isHost: false,
         isReady: false,
         score: 0,
+        comboCount: 0, // Initialize combo count for new player
+        answeredQuestionIds: [], // Initialize answered questions array for new player
       }
 
       // Add player to lobby's players array
@@ -319,13 +329,154 @@ io.on("connection", (socket) => {
 
       // Broadcast "game-started" event to all players in the lobby
       io.to(lobbyCodeToUpdate).emit("game-started", updatedLobby.gameState)
+
+      const gameTimer = setInterval(() => {
+        // Error handling: Check if lobby still exists
+        const currentLobby = lobbies.get(lobbyCodeToUpdate!)
+        if (!currentLobby) {
+          clearInterval(gameTimer)
+          console.log(`[v0] Timer cleared - lobby ${lobbyCodeToUpdate} no longer exists`)
+          return
+        }
+
+        // Decrement time remaining
+        const newTimeRemaining = currentLobby.gameState.timeRemaining - 1
+
+        // Update lobby with new time
+        const updatedGameState: GameState = {
+          ...currentLobby.gameState,
+          timeRemaining: newTimeRemaining,
+        }
+
+        const timerUpdatedLobby: Lobby = {
+          ...currentLobby,
+          gameState: updatedGameState,
+        }
+
+        lobbies.set(lobbyCodeToUpdate!, timerUpdatedLobby)
+
+        // Broadcast timer update to all players
+        io.to(lobbyCodeToUpdate!).emit("timer-update", newTimeRemaining)
+
+        // Check if game should end
+        if (newTimeRemaining <= 0) {
+          clearInterval(gameTimer)
+
+          // Set game flags to ended state
+          const endedGameState: GameState = {
+            ...updatedGameState,
+            isActive: false,
+            isEnded: true,
+            timeRemaining: 0,
+          }
+
+          const endedLobby: Lobby = {
+            ...timerUpdatedLobby,
+            gameState: endedGameState,
+            isGameActive: false,
+            gameTimerId: undefined, // Clear timer reference
+          }
+
+          lobbies.set(lobbyCodeToUpdate!, endedLobby)
+
+          // Sort players by score (descending) for final scores
+          const finalScores = [...endedLobby.players].sort((a, b) => b.score - a.score)
+
+          // Broadcast game ended event with sorted scores
+          io.to(lobbyCodeToUpdate!).emit("game-ended", finalScores)
+
+          console.log(`[v0] Game ended in lobby ${lobbyCodeToUpdate} - timer reached zero`)
+        }
+      }, 1000)
+
+      // Store timer ID in lobby for cleanup
+      updatedLobby.gameTimerId = gameTimer
+      lobbies.set(lobbyCodeToUpdate, updatedLobby)
     } catch (error) {
       console.error(`[v0] Error starting game:`, error)
     }
   })
 
-  // TODO: Implement socket event handlers
-  // - submit-answer
+  socket.on("submit-answer", (payload) => {
+    try {
+      const { questionId, answer } = payload
+      let lobbyToUpdate: Lobby | undefined
+      let lobbyCodeToUpdate: string | undefined
+
+      // Find the lobby the player is in
+      for (const [code, lobby] of lobbies.entries()) {
+        if (lobby.players.some((p) => p.id === socket.id)) {
+          lobbyCodeToUpdate = code
+          lobbyToUpdate = lobby
+          break
+        }
+      }
+
+      // --- Start of Full Validation ---
+      if (!lobbyToUpdate || !lobbyCodeToUpdate) return
+      if (!lobbyToUpdate.isGameActive) return
+
+      const playerIndex = lobbyToUpdate.players.findIndex((p) => p.id === socket.id)
+      if (playerIndex === -1) return
+
+      const question = lobbyToUpdate.gameState.questions.find((q) => q.id === questionId)
+      if (!question) return
+
+      // Bug Fix: Check if player has already answered this question
+      const originalPlayer = lobbyToUpdate.players[playerIndex]
+      if (originalPlayer.answeredQuestionIds.includes(questionId)) {
+        console.log(`[v0] Player ${originalPlayer.name} submitted a duplicate answer for question ${questionId}.`)
+        return
+      }
+      // --- End of Full Validation ---
+
+      const isCorrect = answer === question.answer.toString()
+      let scoreChange = 0
+      let newComboCount = 0
+
+      // --- Start of Full Scoring Logic ---
+      if (isCorrect) {
+        newComboCount = originalPlayer.comboCount + 1
+        // Combo starts after 2 consecutive correct answers (i.e., when comboCount is 1)
+        const comboLevel = Math.max(0, newComboCount - 1)
+        const multiplier = Math.min(1.0 + comboLevel * 0.05, 2.0) // Cap at 2.0x
+        scoreChange = Math.round(100 * multiplier)
+      } else {
+        newComboCount = 0 // Reset combo on wrong answer
+        const comboLevel = Math.max(0, originalPlayer.comboCount - 1)
+        const multiplier = Math.min(1.0 + comboLevel * 0.05, 2.0)
+        const penaltyMultiplier = Math.min(multiplier, 1.5) // Cap penalty multiplier at 1.5x
+        scoreChange = -Math.round(25 * penaltyMultiplier)
+      }
+      // --- End of Full Scoring Logic ---
+
+      // --- Start of Immutable Update ---
+      const updatedPlayer: Player = {
+        ...originalPlayer,
+        score: Math.max(0, originalPlayer.score + scoreChange), // Ensure score doesn't go below 0
+        comboCount: newComboCount,
+        answeredQuestionIds: [...originalPlayer.answeredQuestionIds, questionId],
+      }
+
+      const updatedPlayers = lobbyToUpdate.players.map((p, index) => (index === playerIndex ? updatedPlayer : p))
+
+      const updatedLobby: Lobby = {
+        ...lobbyToUpdate,
+        players: updatedPlayers,
+      }
+
+      lobbies.set(lobbyCodeToUpdate, updatedLobby)
+      // --- End of Immutable Update ---
+
+      console.log(
+        `[v0] Player ${updatedPlayer.name} answered. Correct: ${isCorrect}. Score change: ${scoreChange}. New score: ${updatedPlayer.score}. Combo: ${updatedPlayer.comboCount}`,
+      )
+
+      io.to(lobbyCodeToUpdate).emit("lobby-updated", updatedLobby)
+    } catch (error) {
+      console.error(`[v0] Error submitting answer:`, error)
+    }
+  })
 
   socket.on("disconnect", () => {
     console.log(`Player disconnected: ${socket.id}`)
