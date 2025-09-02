@@ -1,5 +1,3 @@
-// server\src\types\index.ts
-
 // Core data structures that match your frontend exactly
 export interface Player {
   id: string // Socket ID on backend
@@ -50,7 +48,6 @@ export interface Lobby {
   gameState: GameState
   host: string // Socket ID of host
   isGameActive: boolean
-  gameTimerId?: NodeJS.Timeout // Added timer ID to track game timer for cleanup
 }
 
 // Socket event types for type safety

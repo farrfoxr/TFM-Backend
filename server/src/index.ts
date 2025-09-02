@@ -1,5 +1,3 @@
-// server\src\index.ts
-
 import express from "express"
 import { createServer } from "http"
 import { Server } from "socket.io"
@@ -20,6 +18,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
 })
 
 const lobbies = new Map<string, Lobby>()
+const activeTimers = new Map<string, NodeJS.Timeout>()
 
 // Middleware
 app.use(cors())
@@ -47,8 +46,10 @@ io.on("connection", (socket) => {
 
         // If the lobby is now empty, delete it
         if (lobby.players.length === 0) {
-          if (lobby.gameTimerId) {
-            clearInterval(lobby.gameTimerId)
+          const timer = activeTimers.get(code)
+          if (timer) {
+            clearInterval(timer)
+            activeTimers.delete(code)
             console.log(`[v0] Cleared timer for empty lobby ${code}`)
           }
           lobbies.delete(code)
@@ -335,6 +336,7 @@ io.on("connection", (socket) => {
         const currentLobby = lobbies.get(lobbyCodeToUpdate!)
         if (!currentLobby) {
           clearInterval(gameTimer)
+          activeTimers.delete(lobbyCodeToUpdate!)
           console.log(`[v0] Timer cleared - lobby ${lobbyCodeToUpdate} no longer exists`)
           return
         }
@@ -361,6 +363,7 @@ io.on("connection", (socket) => {
         // Check if game should end
         if (newTimeRemaining <= 0) {
           clearInterval(gameTimer)
+          activeTimers.delete(lobbyCodeToUpdate!)
 
           // Set game flags to ended state
           const endedGameState: GameState = {
@@ -374,7 +377,6 @@ io.on("connection", (socket) => {
             ...timerUpdatedLobby,
             gameState: endedGameState,
             isGameActive: false,
-            gameTimerId: undefined, // Clear timer reference
           }
 
           lobbies.set(lobbyCodeToUpdate!, endedLobby)
@@ -389,9 +391,7 @@ io.on("connection", (socket) => {
         }
       }, 1000)
 
-      // Store timer ID in lobby for cleanup
-      updatedLobby.gameTimerId = gameTimer
-      lobbies.set(lobbyCodeToUpdate, updatedLobby)
+      activeTimers.set(lobbyCodeToUpdate, gameTimer)
     } catch (error) {
       console.error(`[v0] Error starting game:`, error)
     }
