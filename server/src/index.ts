@@ -18,6 +18,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
 })
 
 const lobbies = new Map<string, Lobby>()
+const playerLobbyMap = new Map<string, string>() // Maps socket.id => lobbyCode
 const activeTimers = new Map<string, NodeJS.Timeout>()
 
 // Middleware
@@ -34,44 +35,48 @@ io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`)
 
   const handleLeaveLobby = (socketId: string) => {
-    let lobbyCodeToUpdate: string | null = null
+    const lobbyCode = playerLobbyMap.get(socketId)
+    if (!lobbyCode) return // Player wasn't in a lobby
 
-    for (const [code, lobby] of lobbies.entries()) {
-      const playerIndex = lobby.players.findIndex((p) => p.id === socketId)
+    const lobby = lobbies.get(lobbyCode)
+    if (!lobby) return
 
-      if (playerIndex !== -1) {
-        // Remove the player from the lobby
-        lobby.players.splice(playerIndex, 1)
-        lobbyCodeToUpdate = code
+    // Create a new players array excluding the leaving player
+    const updatedPlayers = lobby.players.filter((p) => p.id !== socketId)
 
-        // If the lobby is now empty, delete it
-        if (lobby.players.length === 0) {
-          const timer = activeTimers.get(code)
-          if (timer) {
-            clearInterval(timer)
-            activeTimers.delete(code)
-            console.log(`[v0] Cleared timer for empty lobby ${code}`)
-          }
-          lobbies.delete(code)
-          console.log(`[v0] Lobby ${code} is empty and has been deleted.`)
-          break
-        }
+    // Case 1: The lobby is now empty (0 players).
+    if (updatedPlayers.length === 0) {
+      const timer = activeTimers.get(lobbyCode)
+      if (timer) {
+        clearInterval(timer)
+        activeTimers.delete(lobbyCode)
+      }
+      lobbies.delete(lobbyCode)
+      console.log(`[v0] Lobby ${lobbyCode} is empty and has been deleted.`)
+    } else {
+      // Case 2: There is at least 1 player remaining.
+      const wasHost = lobby.host === socketId
+      const newHostId = wasHost ? updatedPlayers[0].id : lobby.host
 
-        // If the leaving player was the host, assign a new host
-        if (lobby.host === socketId) {
-          const newHost = lobby.players[0]
-          if (newHost) {
-            newHost.isHost = true
-            lobby.host = newHost.id
-            console.log(`[v0] Host left lobby ${code}. New host is ${newHost.name}.`)
-          }
-        }
+      const updatedLobby: Lobby = {
+        ...lobby,
+        players: updatedPlayers.map((p, index) => ({
+          ...p,
+          isHost: (wasHost && index === 0) || (!wasHost && p.id === newHostId),
+        })),
+        host: newHostId,
+      }
 
-        // Broadcast the update to the remaining players
-        io.to(code).emit("lobby-updated", lobby)
-        break
+      lobbies.set(lobbyCode, updatedLobby)
+      io.to(lobbyCode).emit("lobby-updated", updatedLobby)
+
+      if (wasHost) {
+        console.log(`[v0] Host left lobby ${lobbyCode}. New host is ${updatedPlayers[0].name}.`)
       }
     }
+
+    // Finally, remove the disconnected player from our lookup map
+    playerLobbyMap.delete(socketId)
   }
 
   socket.on("create-lobby", (playerName, callback) => {
@@ -128,6 +133,7 @@ io.on("connection", (socket) => {
 
       // Join socket to lobby room
       socket.join(lobbyCode)
+      playerLobbyMap.set(socket.id, lobbyCode)
 
       console.log(`[v0] Created lobby ${lobbyCode} with host ${playerName} (${socket.id})`)
 
@@ -161,19 +167,26 @@ io.on("connection", (socket) => {
         answeredQuestionIds: [], // Initialize answered questions array for new player
       }
 
-      // Add player to lobby's players array
-      lobby.players.push(newPlayer)
+      // Create a new, updated lobby object with the new player
+      const updatedLobby: Lobby = {
+        ...lobby,
+        players: [...lobby.players, newPlayer],
+      }
+
+      // Save the new state back to the Map
+      lobbies.set(lobbyCode, updatedLobby)
 
       // Join socket to the lobby room
       socket.join(lobbyCode)
+      playerLobbyMap.set(socket.id, lobbyCode)
 
       console.log(`[v0] Player ${playerName} (${socket.id}) joined lobby ${lobbyCode}`)
 
       // Send success response to the joiner
-      callback({ success: true, lobby })
+      callback({ success: true, lobby: updatedLobby })
 
-      // Broadcast lobby update to all players in the room
-      io.to(lobbyCode).emit("lobby-updated", lobby)
+      // Broadcast the updated lobby to all players in the room
+      io.to(lobbyCode).emit("lobby-updated", updatedLobby)
     } catch (error) {
       console.error(`[v0] Error joining lobby:`, error)
       callback({ success: false, error: "Failed to join lobby" })
