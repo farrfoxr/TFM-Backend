@@ -491,6 +491,80 @@ io.on("connection", (socket) => {
     }
   })
 
+  socket.on("return-to-lobby", () => {
+    try {
+      let lobbyToUpdate: Lobby | undefined
+      let lobbyCodeToUpdate: string | undefined
+
+      // Find the lobby the player is in
+      for (const [code, lobby] of lobbies.entries()) {
+        if (lobby.players.some((p) => p.id === socket.id)) {
+          lobbyCodeToUpdate = code
+          lobbyToUpdate = lobby
+          break
+        }
+      }
+
+      // Validation: Check if player is in a lobby
+      if (!lobbyToUpdate || !lobbyCodeToUpdate) return
+
+      // Validation: Check if player is the host
+      if (lobbyToUpdate.host !== socket.id) return
+
+      // Validation: Check if game has ended
+      if (!lobbyToUpdate.gameState.isEnded) return
+
+      // Clear any active timers for this lobby
+      const timer = activeTimers.get(lobbyCodeToUpdate)
+      if (timer) {
+        clearInterval(timer)
+        activeTimers.delete(lobbyCodeToUpdate)
+      }
+
+      // Reset all players' game-related state while preserving host status
+      const resetPlayers = lobbyToUpdate.players.map((player) => ({
+        ...player,
+        score: 0,
+        isReady: false,
+        comboCount: 0,
+        answeredQuestionIds: [],
+        // Keep isHost unchanged
+      }))
+
+      // Reset game state to initial lobby state
+      const resetGameState: GameState = {
+        isActive: false,
+        currentQuestionIndex: 0,
+        questions: [],
+        timeRemaining: 0,
+        comboCount: 0,
+        isComboActive: false,
+        comboTimeRemaining: 0,
+        isEnded: false,
+      }
+
+      // Create updated lobby with reset state
+      const updatedLobby: Lobby = {
+        ...lobbyToUpdate,
+        players: resetPlayers,
+        gameState: resetGameState,
+        isGameActive: false,
+      }
+
+      // Save the updated lobby
+      lobbies.set(lobbyCodeToUpdate, updatedLobby)
+
+      console.log(
+        `[v0] Host returned lobby ${lobbyCodeToUpdate} to lobby state, resetting all player scores and game state`,
+      )
+
+      // Broadcast the updated lobby to all players in the room
+      io.to(lobbyCodeToUpdate).emit("lobby-updated", updatedLobby)
+    } catch (error) {
+      console.error(`[v0] Error returning to lobby:`, error)
+    }
+  })
+
   socket.on("disconnect", () => {
     console.log(`Player disconnected: ${socket.id}`)
     handleLeaveLobby(socket.id)

@@ -76,4 +76,5 @@ export interface ClientToServerEvents {
   "start-game": () => void
   "submit-answer": (payload: { questionId: number; answer: string }) => void
   "update-settings": (settings: Partial<GameSettings>) => void
+  "return-to-lobby": () => void // Added return-to-lobby event for host to reset game state
 }
