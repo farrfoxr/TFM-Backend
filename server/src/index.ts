@@ -112,7 +112,7 @@ io.on("connection", (socket) => {
         code: lobbyCode,
         players: [hostPlayer],
         settings: {
-          difficulty: "medium",
+          difficulty: "easy", // Changed default difficulty from "medium" to "easy"
           duration: 120, // Changed from 30 to 120 seconds to match frontend default
           questionCount: 10,
           operations: {
