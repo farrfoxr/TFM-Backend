@@ -464,7 +464,7 @@ io.on("connection", (socket) => {
 
         // Award points for a correct but slow answer, but no combo
         if (isCorrect) {
-          scoreChange = 50 // A smaller, fixed amount for correct but slow answers
+          scoreChange = 100 // A smaller, fixed amount for correct but slow answers
         } else {
           scoreChange = -Math.round(25 * penaltyMultiplier)
         }
