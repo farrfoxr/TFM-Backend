@@ -412,7 +412,7 @@ io.on("connection", (socket) => {
 
   socket.on("submit-answer", (payload) => {
     try {
-      const { questionId, answer } = payload
+      const { questionId, answer, timeTaken } = payload
       let lobbyToUpdate: Lobby | undefined
       let lobbyCodeToUpdate: string | undefined
 
@@ -448,18 +448,26 @@ io.on("connection", (socket) => {
       let newComboCount = 0
 
       // --- Start of Full Scoring Logic ---
-      if (isCorrect) {
+      if (isCorrect && timeTaken <= 7000) {
+        // Check for correctness AND time
         newComboCount = originalPlayer.comboCount + 1
         // Combo starts after 2 consecutive correct answers (i.e., when comboCount is 1)
         const comboLevel = Math.max(0, newComboCount - 1)
         const multiplier = Math.min(1.0 + comboLevel * 0.05, 2.0) // Cap at 2.0x
         scoreChange = Math.round(100 * multiplier)
       } else {
-        newComboCount = 0 // Reset combo on wrong answer
+        // If incorrect OR too slow, reset the combo
+        newComboCount = 0
         const comboLevel = Math.max(0, originalPlayer.comboCount - 1)
         const multiplier = Math.min(1.0 + comboLevel * 0.05, 2.0)
         const penaltyMultiplier = Math.min(multiplier, 1.5) // Cap penalty multiplier at 1.5x
-        scoreChange = -Math.round(25 * penaltyMultiplier)
+
+        // Award points for a correct but slow answer, but no combo
+        if (isCorrect) {
+          scoreChange = 50 // A smaller, fixed amount for correct but slow answers
+        } else {
+          scoreChange = -Math.round(25 * penaltyMultiplier)
+        }
       }
       // --- End of Full Scoring Logic ---
 

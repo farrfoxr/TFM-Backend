@@ -74,7 +74,7 @@ export interface ClientToServerEvents {
   "leave-lobby": () => void
   "toggle-ready": (callback: (response: { success: boolean; isReady?: boolean; error?: string }) => void) => void
   "start-game": () => void
-  "submit-answer": (payload: { questionId: number; answer: string }) => void
+  "submit-answer": (payload: { questionId: number; answer: string; timeTaken: number }) => void // Added timeTaken parameter for time-based combo validation
   "update-settings": (settings: Partial<GameSettings>) => void
   "return-to-lobby": () => void // Added return-to-lobby event for host to reset game state
 }
