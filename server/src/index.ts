@@ -448,7 +448,7 @@ io.on("connection", (socket) => {
       let newComboCount = 0
 
       // --- Start of Full Scoring Logic ---
-      if (isCorrect && timeTaken <= 7000) {
+      if (isCorrect && timeTaken <= 10000) {
         // Check for correctness AND time
         newComboCount = originalPlayer.comboCount + 1
         // Combo starts after 2 consecutive correct answers (i.e., when comboCount is 1)
