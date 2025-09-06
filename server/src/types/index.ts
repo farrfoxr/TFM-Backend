@@ -20,7 +20,6 @@ export interface Question {
 export interface GameSettings {
   difficulty: "easy" | "medium" | "hard"
   duration: number // in seconds
-  questionCount: number
   operations: {
     addition: boolean
     subtraction: boolean

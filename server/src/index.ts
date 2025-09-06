@@ -114,7 +114,6 @@ io.on("connection", (socket) => {
         settings: {
           difficulty: "easy", // Changed default difficulty from "medium" to "easy"
           duration: 120, // Changed from 30 to 120 seconds to match frontend default
-          questionCount: 10,
           operations: {
             addition: true,
             subtraction: true,
@@ -314,8 +313,15 @@ io.on("connection", (socket) => {
 
       // --- Start of Immutable Update Logic ---
 
-      // 1. Generate questions
-      const questions = GameUtils.generateQuestions(lobbyToUpdate.settings)
+      let questionCount = 50 // Default for 120 seconds (2 minutes)
+      if (lobbyToUpdate.settings.duration === 180) {
+        questionCount = 75 // 3 minutes
+      } else if (lobbyToUpdate.settings.duration === 300) {
+        questionCount = 125 // 5 minutes
+      }
+
+      const newSettings = { ...lobbyToUpdate.settings, questionCount }
+      const questions = GameUtils.generateQuestions(newSettings)
 
       // 2. Create the new game state
       const newGameState: GameState = {
@@ -448,7 +454,7 @@ io.on("connection", (socket) => {
       let newComboCount = 0
 
       // --- Start of Full Scoring Logic ---
-      if (isCorrect && timeTaken <= 10000) {
+      if (isCorrect && timeTaken <= 7000) {
         // Check for correctness AND time
         newComboCount = originalPlayer.comboCount + 1
         // Combo starts after 2 consecutive correct answers (i.e., when comboCount is 1)
