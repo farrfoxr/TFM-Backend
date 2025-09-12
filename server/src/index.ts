@@ -313,17 +313,24 @@ io.on("connection", (socket) => {
 
       // --- Start of Immutable Update Logic ---
 
-      let questionCount = 50 // Default for 120 seconds (2 minutes)
+      // 1. Determine question count based on duration
+      let questionCount = 50 // Default for 2 mins (120s)
       if (lobbyToUpdate.settings.duration === 180) {
-        questionCount = 75 // 3 minutes
+        questionCount = 75
       } else if (lobbyToUpdate.settings.duration === 300) {
-        questionCount = 125 // 5 minutes
+        questionCount = 125
       }
 
-      const newSettings = { ...lobbyToUpdate.settings, questionCount }
-      const questions = GameUtils.generateQuestions(newSettings)
+      // 2. Create a temporary settings object that includes the correct questionCount
+      const settingsForGeneration = {
+        ...lobbyToUpdate.settings,
+        questionCount,
+      }
 
-      // 2. Create the new game state
+      // 3. Generate questions using the correct settings
+      const questions = GameUtils.generateQuestions(settingsForGeneration)
+
+      // 4. Create the new game state
       const newGameState: GameState = {
         ...lobbyToUpdate.gameState,
         isActive: true,
@@ -333,14 +340,14 @@ io.on("connection", (socket) => {
         isEnded: false,
       }
 
-      // 3. Create the new, updated lobby object
+      // 5. Create the new, updated lobby object
       const updatedLobby: Lobby = {
         ...lobbyToUpdate,
         gameState: newGameState,
         isGameActive: true,
       }
 
-      // 4. Save the new lobby state back to the Map
+      // 6. Save the new lobby state back to the Map
       lobbies.set(lobbyCodeToUpdate, updatedLobby)
 
       // --- End of Immutable Update Logic ---

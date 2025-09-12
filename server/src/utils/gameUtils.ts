@@ -2,7 +2,8 @@ import type { Question, GameSettings } from "../types"
 
 export class GameUtils {
   // Main function to generate a full set of questions
-  static generateQuestions(settings: GameSettings, count = 40): Question[] {
+  static generateQuestions(settings: GameSettings): Question[] {
+    const { questionCount = 50 } = settings
     const questions: Question[] = []
     const ops = Object.entries(settings.operations)
       .filter(([_, enabled]) => enabled)
@@ -14,7 +15,7 @@ export class GameUtils {
       ops.push("addition")
     }
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < questionCount; i++) {
       const operation = this.getWeightedOperation(ops, settings.difficulty)
       let questionData: { equation: string; answer: number }
 
