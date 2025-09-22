@@ -125,6 +125,7 @@ io.on("connection", (socket) => {
         gameState: initialGameState,
         host: socket.id,
         isGameActive: false,
+        firstFinisherId: null, // Add this line
       }
 
       // Store lobby in memory
@@ -492,6 +493,19 @@ io.on("connection", (socket) => {
         answeredQuestionIds: [...originalPlayer.answeredQuestionIds, questionId],
       }
 
+      // --- ADD THIS NEW BLOCK FOR THE FINISHER BONUS ---
+      const bonusPoints = 100;
+      const justFinished = updatedPlayer.answeredQuestionIds.length === lobbyToUpdate.gameState.questions.length;
+
+      if (justFinished && isCorrect && lobbyToUpdate.firstFinisherId === null) {
+        // This is the first player to finish correctly!
+        updatedPlayer.score += bonusPoints;
+        lobbyToUpdate.firstFinisherId = socket.id; // Mark them as the first finisher
+
+        console.log(`[v0] Player ${updatedPlayer.name} is the first to finish and gets ${bonusPoints} bonus points!`);
+      }
+      // --- END OF NEW BLOCK ---
+
       const updatedPlayers = lobbyToUpdate.players.map((p, index) => (index === playerIndex ? updatedPlayer : p))
 
       const updatedLobby: Lobby = {
@@ -570,6 +584,7 @@ io.on("connection", (socket) => {
         players: resetPlayers,
         gameState: resetGameState,
         isGameActive: false,
+        firstFinisherId: null, // Add this line
       }
 
       // Save the updated lobby

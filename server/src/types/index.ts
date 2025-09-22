@@ -48,6 +48,7 @@ export interface Lobby {
   gameState: GameState
   host: string // Socket ID of host
   isGameActive: boolean
+  firstFinisherId?: string | null // Add this line
 }
 
 // Socket event types for type safety
